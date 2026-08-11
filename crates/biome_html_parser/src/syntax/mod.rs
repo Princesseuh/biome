@@ -153,6 +153,7 @@ pub(crate) fn parse_root(p: &mut HtmlParser) {
     // where an unknown top-level tag is a custom element rather than a block.
     ElementList {
         vue_sfc_top_level: Vue.is_supported(p) && !p.options().is_html(),
+        in_math: false,
     }
     .parse_list(p);
 
@@ -333,7 +334,7 @@ fn is_vue_raw_text_block(name_kind: HtmlSyntaxKind, names_a_language: bool) -> b
     }
 }
 
-fn parse_element(p: &mut HtmlParser, at_vue_sfc_top_level: bool) -> ParsedSyntax {
+fn parse_element(p: &mut HtmlParser, at_vue_sfc_top_level: bool, in_math: bool) -> ParsedSyntax {
     if !p.at(T![<]) {
         return Absent;
     }
@@ -346,13 +347,13 @@ fn parse_element(p: &mut HtmlParser, at_vue_sfc_top_level: bool) -> ParsedSyntax
         // and if it turns out to be unclosed, parse the element again as
         // ordinary markup so that its diagnostics stay where the mistake is.
         let checkpoint = p.checkpoint();
-        match parse_element_allowing_sfc_blocks(p, true) {
+        match parse_element_allowing_sfc_blocks(p, true, in_math) {
             block @ Present(_) => return block,
             Absent => p.rewind(checkpoint),
         }
     }
 
-    parse_element_allowing_sfc_blocks(p, false)
+    parse_element_allowing_sfc_blocks(p, false, in_math)
 }
 
 /// Parses an element, reading its content as opaque text when it opens a block
@@ -361,7 +362,11 @@ fn parse_element(p: &mut HtmlParser, at_vue_sfc_top_level: bool) -> ParsedSyntax
 /// Returns `Absent` only when such a block turned out to have no closing tag.
 /// The caller has already established that the parser is at a `<`, so nothing
 /// else can make this fail.
-fn parse_element_allowing_sfc_blocks(p: &mut HtmlParser, sfc_blocks: bool) -> ParsedSyntax {
+fn parse_element_allowing_sfc_blocks(
+    p: &mut HtmlParser,
+    sfc_blocks: bool,
+    in_math: bool,
+) -> ParsedSyntax {
     let m = p.start();
 
     p.bump_with_context(T![<], inside_tag_context(p));
@@ -379,6 +384,9 @@ fn parse_element_allowing_sfc_blocks(p: &mut HtmlParser, sfc_blocks: bool) -> Pa
     // whitespace, which ends up as trivia.
     let is_embedded_language_tag = EMBEDDED_LANGUAGE_ELEMENTS.contains(name_kind)
         && !(PREFORMATTED_ELEMENTS.contains(name_kind) && Svelte.is_supported(p));
+
+    // MathML is foreign content, where Astro parses no expressions at all.
+    let is_astro_math = Astro.is_supported(p) && opening_tag_name.eq_ignore_ascii_case("math");
 
     // `<>` opens a fragment in Astro; elsewhere a missing name is still an error.
     let is_fragment = Astro.is_supported(p) && p.at(T![>]);
@@ -484,7 +492,11 @@ fn parse_element_allowing_sfc_blocks(p: &mut HtmlParser, sfc_blocks: bool) -> Pa
             closing_tag.or_add_diagnostic(p, expected_closing_tag);
         } else {
             loop {
-                ElementList::default().parse_list(p);
+                ElementList {
+                    vue_sfc_top_level: false,
+                    in_math: in_math || is_astro_math,
+                }
+                .parse_list(p);
                 if let Some(mut closing) =
                     parse_closing_tag(p).or_add_diagnostic(p, expected_closing_tag)
                 {
@@ -588,11 +600,15 @@ fn is_void_closing_tag(p: &HtmlParser, closing: &CompletedMarker) -> bool {
 }
 
 #[inline]
-pub(crate) fn parse_html_element(p: &mut HtmlParser, at_vue_sfc_top_level: bool) -> ParsedSyntax {
+pub(crate) fn parse_html_element(
+    p: &mut HtmlParser,
+    at_vue_sfc_top_level: bool,
+    in_math: bool,
+) -> ParsedSyntax {
     match p.cur() {
         T!["<![CDATA["] => parse_cdata_section(p),
         T![<?] => parse_processing_instruction(p),
-        T![<] => parse_element(p, at_vue_sfc_top_level),
+        T![<] => parse_element(p, at_vue_sfc_top_level, in_math),
         T!["{{"] => HtmlSyntaxFeatures::DoubleTextExpressions.parse_exclusive_syntax(
             p,
             |p| parse_double_text_expression(p, regular_context(p)),
@@ -600,6 +616,13 @@ pub(crate) fn parse_html_element(p: &mut HtmlParser, at_vue_sfc_top_level: bool)
         ),
         T!["{@"] => parse_svelte_at_block(p),
         T!["{#"] => parse_svelte_hash_block(p),
+        // Astro turns expression parsing off inside MathML, so that LaTeX such
+        // as `R^{2x}` survives as text.
+        T!['{'] if in_math => {
+            let m = p.start();
+            p.bump_remap_with_context(HTML_LITERAL, regular_context(p));
+            Present(m.complete(p, HTML_CONTENT))
+        }
         T!['{'] => parse_svelte_declaration_or_expression(p).or_else(|| {
             let m = p.start();
             p.bump_remap(HTML_LITERAL);
@@ -636,6 +659,8 @@ struct ElementList {
     /// component. Only the outermost list, so that a `<docs>` nested inside a
     /// `<template>` stays ordinary markup.
     vue_sfc_top_level: bool,
+    /// Whether this list sits inside an Astro `<math>`, where a `{` is text.
+    in_math: bool,
 }
 
 impl ParseNodeList for ElementList {
@@ -644,7 +669,7 @@ impl ParseNodeList for ElementList {
     const LIST_KIND: Self::Kind = HTML_ELEMENT_LIST;
 
     fn parse_element(&mut self, p: &mut Self::Parser<'_>) -> ParsedSyntax {
-        parse_html_element(p, self.vue_sfc_top_level)
+        parse_html_element(p, self.vue_sfc_top_level, self.in_math)
     }
 
     fn is_at_list_end(&self, p: &mut Self::Parser<'_>) -> bool {
