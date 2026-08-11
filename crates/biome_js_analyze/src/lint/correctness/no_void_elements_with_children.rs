@@ -46,13 +46,8 @@ declare_node_union! {
     pub NoVoidElementsWithChildrenQuery = JsxElement | JsCallExpression | JsxSelfClosingElement
 }
 
-const VOID_ELEMENTS: [&str; 16] = [
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "menuitem",
-    "meta", "param", "source", "track", "wbr",
-];
-
 fn void_dom_element_name(element_name: &str) -> Option<&'static str> {
-    VOID_ELEMENTS
+    biome_js_syntax::jsx_ext::VOID_ELEMENTS
         .iter()
         .copied()
         .find(|candidate| *candidate == element_name)
@@ -331,9 +326,9 @@ impl Rule for NoVoidElementsWithChildren {
                         opening_element.l_angle_token().ok()?,
                         opening_element.name().ok()?,
                         new_attribute_list,
-                        closing_element.slash_token().ok()?,
                         opening_element.r_angle_token().ok()?,
                     )
+                    .with_slash_token(closing_element.slash_token().ok()?)
                     .build();
                     mutation.replace_element(
                         element.clone().into_syntax().into(),
