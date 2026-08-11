@@ -937,8 +937,8 @@ impl HtmlClosingElement {
     pub fn slash_token(&self) -> SyntaxResult<SyntaxToken> {
         support::required_token(&self.syntax, 1usize)
     }
-    pub fn name(&self) -> SyntaxResult<AnyHtmlTagName> {
-        support::required_node(&self.syntax, 2usize)
+    pub fn name(&self) -> Option<AnyHtmlTagName> {
+        support::node(&self.syntax, 2usize)
     }
     pub fn r_angle_token(&self) -> SyntaxResult<SyntaxToken> {
         support::required_token(&self.syntax, 3usize)
@@ -956,7 +956,7 @@ impl Serialize for HtmlClosingElement {
 pub struct HtmlClosingElementFields {
     pub l_angle_token: SyntaxResult<SyntaxToken>,
     pub slash_token: SyntaxResult<SyntaxToken>,
-    pub name: SyntaxResult<AnyHtmlTagName>,
+    pub name: Option<AnyHtmlTagName>,
     pub r_angle_token: SyntaxResult<SyntaxToken>,
 }
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -1294,8 +1294,8 @@ impl HtmlOpeningElement {
     pub fn l_angle_token(&self) -> SyntaxResult<SyntaxToken> {
         support::required_token(&self.syntax, 0usize)
     }
-    pub fn name(&self) -> SyntaxResult<AnyHtmlTagName> {
-        support::required_node(&self.syntax, 1usize)
+    pub fn name(&self) -> Option<AnyHtmlTagName> {
+        support::node(&self.syntax, 1usize)
     }
     pub fn attributes(&self) -> HtmlAttributeList {
         support::list(&self.syntax, 2usize)
@@ -1315,7 +1315,7 @@ impl Serialize for HtmlOpeningElement {
 #[derive(Serialize)]
 pub struct HtmlOpeningElementFields {
     pub l_angle_token: SyntaxResult<SyntaxToken>,
-    pub name: SyntaxResult<AnyHtmlTagName>,
+    pub name: Option<AnyHtmlTagName>,
     pub attributes: HtmlAttributeList,
     pub r_angle_token: SyntaxResult<SyntaxToken>,
 }
@@ -6877,7 +6877,7 @@ impl std::fmt::Debug for HtmlClosingElement {
                     "slash_token",
                     &support::DebugSyntaxResult(self.slash_token()),
                 )
-                .field("name", &support::DebugSyntaxResult(self.name()))
+                .field("name", &support::DebugOptionalElement(self.name()))
                 .field(
                     "r_angle_token",
                     &support::DebugSyntaxResult(self.r_angle_token()),
@@ -7316,7 +7316,7 @@ impl std::fmt::Debug for HtmlOpeningElement {
                     "l_angle_token",
                     &support::DebugSyntaxResult(self.l_angle_token()),
                 )
-                .field("name", &support::DebugSyntaxResult(self.name()))
+                .field("name", &support::DebugOptionalElement(self.name()))
                 .field("attributes", &self.attributes())
                 .field(
                     "r_angle_token",

@@ -379,7 +379,11 @@ fn parse_element_allowing_sfc_blocks(p: &mut HtmlParser, sfc_blocks: bool) -> Pa
     let is_embedded_language_tag = EMBEDDED_LANGUAGE_ELEMENTS.contains(name_kind)
         && !(PREFORMATTED_ELEMENTS.contains(name_kind) && Svelte.is_supported(p));
 
-    parse_any_tag_name(p).or_add_diagnostic(p, expected_element_name);
+    // `<>` opens a fragment in Astro; elsewhere a missing name is still an error.
+    let is_fragment = Astro.is_supported(p) && p.at(T![>]);
+    if !is_fragment {
+        parse_any_tag_name(p).or_add_diagnostic(p, expected_element_name);
+    }
 
     match html_framework(p) {
         HtmlFramework::Svelte => {
@@ -472,7 +476,12 @@ fn parse_element_allowing_sfc_blocks(p: &mut HtmlParser, sfc_blocks: bool) -> Pa
                         continue;
                     }
 
-                    if !closing.text(p).contains(opening_tag_name.as_str()) {
+                    let closing_matches = if is_fragment {
+                        closing.text(p).trim() == "</>"
+                    } else {
+                        closing.text(p).contains(opening_tag_name.as_str())
+                    };
+                    if !closing_matches {
                         p.error(
                             expected_matching_closing_tag(p, closing.range(p)).into_diagnostic(p),
                         );

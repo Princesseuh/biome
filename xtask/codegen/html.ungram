@@ -125,7 +125,7 @@ HtmlElement =
 // ^^        ^
 HtmlOpeningElement =
 	'<'
-	name: AnyHtmlTagName
+	name: AnyHtmlTagName?
 	attributes: HtmlAttributeList
 	'>'
 
@@ -133,7 +133,7 @@ HtmlOpeningElement =
 HtmlClosingElement =
 	'<'
 	'/'
-	name: AnyHtmlTagName
+	name: AnyHtmlTagName?
 	'>'
 
 AnyHtmlTagName =
